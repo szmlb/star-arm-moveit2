@@ -54,12 +54,36 @@ class TeleopBridge(Node):
         self.declare_parameter("command_time_ms", 70)
         self.declare_parameter("startup_ramp_time_ms", 800)
         self.declare_parameter("stale_timeout", 0.5)
+        # Gripper-only linear remap, expressed as [open_deg, closed_deg] pairs
+        # (NOT [min_deg, max_deg] -- viola and violin were found to use
+        # OPPOSITE directions: violin low=open/high=closed, viola
+        # low=closed/high=open. A naive same-direction min/max remap
+        # commanded viola to open further than fully open and silently did
+        # nothing once it hit that limit. Using explicit open/closed
+        # endpoints makes the interpolation direction-agnostic and correct
+        # regardless of which arm's convention runs which way. Values are in
+        # the same degree-equivalent units as SetAngle.target_angle for the
+        # gripper servo (see _joint_state_to_servo_angle). Defaults are from
+        # hand-held-at-each-extreme readings on 2026-09-23, not a careful
+        # calibration -- adjust if the mapping feels off.
+        # NOTE: a physical USB reconnect was observed to shift the LEADER's
+        # calibration entirely (open/closed went from 163.8/209.0 to
+        # 29.4/-7.3 after one unplug-replug -- follower's stayed put).
+        # Re-measure the leader side after any reconnect/power cycle.
+        self.declare_parameter("leader_gripper_open_closed_deg", [29.4, -7.3])
+        self.declare_parameter("follower_gripper_open_closed_deg", [106.0, 2.7])
 
         leader_ns = str(self.get_parameter("leader_namespace").value).strip("/")
         follower_ns = str(self.get_parameter("follower_namespace").value).strip("/")
         self._command_time_ms = int(self.get_parameter("command_time_ms").value)
         self._startup_ramp_time_ms = int(self.get_parameter("startup_ramp_time_ms").value)
         self._stale_timeout = float(self.get_parameter("stale_timeout").value)
+        self._leader_gripper_open_closed = tuple(
+            float(v) for v in self.get_parameter("leader_gripper_open_closed_deg").value
+        )
+        self._follower_gripper_open_closed = tuple(
+            float(v) for v in self.get_parameter("follower_gripper_open_closed_deg").value
+        )
 
         self._last_leader_time = 0.0
 
@@ -75,8 +99,17 @@ class TeleopBridge(Node):
 
         self.get_logger().info(
             f"starai_teleop_bridge ready: leader=/{leader_ns}/joint_states "
-            f"-> follower=/{follower_ns}/set_angle_topic"
+            f"-> follower=/{follower_ns}/set_angle_topic "
+            f"(gripper open/closed remap {self._leader_gripper_open_closed} "
+            f"-> {self._follower_gripper_open_closed})"
         )
+
+    def _remap_gripper_degrees(self, leader_deg: float) -> float:
+        open_l, closed_l = self._leader_gripper_open_closed
+        open_f, closed_f = self._follower_gripper_open_closed
+        fraction_closed = (leader_deg - open_l) / (closed_l - open_l)
+        fraction_closed = max(0.0, min(1.0, fraction_closed))
+        return open_f + fraction_closed * (closed_f - open_f)
 
     def _on_leader_joint_state(self, msg: JointState) -> None:
         now = time.monotonic()
@@ -91,8 +124,17 @@ class TeleopBridge(Node):
             index = _JOINT_INDEX.get(name)
             if index is None or not math.isfinite(position):
                 continue
+            angle_deg = _joint_state_to_servo_angle(index, position)
+            if index == 6:
+                remapped = self._remap_gripper_degrees(angle_deg)
+                self.get_logger().debug(
+                    f"gripper: leader_pos={position:.5f} leader_deg={angle_deg:.2f} "
+                    f"-> follower_deg={remapped:.2f}",
+                    throttle_duration_sec=0.5,
+                )
+                angle_deg = remapped
             servo_id.append(index)
-            target_angle.append(_joint_state_to_servo_angle(index, position))
+            target_angle.append(angle_deg)
             command_time.append(time_ms)
 
         if not servo_id:
