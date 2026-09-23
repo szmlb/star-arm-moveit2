@@ -7,7 +7,7 @@
 # against gravity. The rest pose below is a separate, mechanically stable,
 # torque-free-capable configuration (arm folded down, resting on the base)
 # captured by hand-posing the physical arm and reading back joint_states.
-# Captured 2026-09-23 for viola (see docs/starai-arm.md).
+# Captured 2026-09-23 for viola and violin (see docs/starai-arm-ros2.md).
 viola:
   joint1: 0.0
   joint2: -86.3
@@ -15,3 +15,16 @@ viola:
   joint4: -0.6
   joint5: 0.2
   joint6: -0.1
+# violin (leader) was already hand-posed at rest when its driver was first
+# launched (lock:=disable, no motion), so this was read directly rather than
+# via the disable_torque -> re-pose -> read sequence used for viola. Note
+# joint6 differs a lot from viola's (-88.1 vs -0.1) -- this is just each
+# arm's own rest posing, not something the live teleop bridge depends on
+# (it mirrors current joint_states 1:1, not these rest values).
+violin:
+  joint1: -1.1
+  joint2: -86.6
+  joint3: 89.0
+  joint4: -3.1
+  joint5: 4.0
+  joint6: -88.1
