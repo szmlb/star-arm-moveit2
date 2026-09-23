@@ -1,0 +1,17 @@
+# Named "rest"/park joint-space configurations per arm, in DEGREES (same units
+# as robo_interfaces/msg/SetAngle.target_angle), servo_id order 0-5 = joint1-6.
+#
+# These are NOT the servo/URDF zero position. The servo's raw zero (all joints
+# at 0 rad) is a real, persistent, factory-level origin that happens to place
+# the arm in an outstretched "L" configuration requiring active torque to hold
+# against gravity. The rest pose below is a separate, mechanically stable,
+# torque-free-capable configuration (arm folded down, resting on the base)
+# captured by hand-posing the physical arm and reading back joint_states.
+# Captured 2026-09-23 for viola (see docs/starai-arm.md).
+viola:
+  joint1: 0.0
+  joint2: -86.3
+  joint3: 90.4
+  joint4: -0.6
+  joint5: 0.2
+  joint6: -0.1
